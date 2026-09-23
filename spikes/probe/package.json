@@ -1,0 +1,17 @@
+{
+  "name": "dsh-docshield-probe",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./host.js",
+  "exports": {
+    ".": "./host.js",
+    "./tools": "./tools.js",
+    "./client": "./dist/client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": { "patch": "./cordis.yml" },
+    "client": { "platform": "web" }
+  }
+}

@@ -1,0 +1,9 @@
+- id: persona
+  name: '@deepseek-ai/dsh-persona'
+  config:
+    prefix: You are a diagnostic agent. When the user says "probe", call probe_echo exactly once and report its JSON verbatim. Otherwise list the names of every tool you can call.
+    complete: true
+    includeRuntimeContext: false
+
+- id: docshield-probe-tools
+  name: 'dsh-docshield-probe/tools'
