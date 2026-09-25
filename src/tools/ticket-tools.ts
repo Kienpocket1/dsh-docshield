@@ -22,7 +22,7 @@ function optionalStatus(args: Record<string, unknown>, key: string): TicketStatu
 
 export function createTicketBody(service: DocShieldService): ToolBody {
   return async (args, exec) => {
-    const scope = requireScope(exec, service.storageRoot, 'any')
+    const scope = requireScope(exec, service, 'any')
     const question = requireString(args, 'question', { max: 2000 })
     const reason = requireString(args, 'reason', { max: 1000 })
     return service.tickets.create({ userId: ownerOf(scope), sessionId: exec.agent?.session.id ?? 'unknown', question, reason })
@@ -36,7 +36,7 @@ export function renderCreateTicket(value: unknown): string {
 
 export function checkTicketBody(service: DocShieldService): ToolBody {
   return async (args, exec) => {
-    const scope = requireScope(exec, service.storageRoot, 'any')
+    const scope = requireScope(exec, service, 'any')
     const code = requireString(args, 'code', { max: 20 })
     // Users only ever see their own tickets; a foreign code looks exactly like a missing one.
     const ticket = service.tickets.get(code, scope.role === 'admin' ? undefined : scope.userId)
@@ -56,7 +56,7 @@ export function renderCheckTicket(value: unknown): string {
 
 export function listTicketsBody(service: DocShieldService): ToolBody {
   return async (args, exec) => {
-    requireScope(exec, service.storageRoot, 'admin')
+    requireScope(exec, service, 'admin')
     const status = optionalStatus(args, 'status')
     const tickets = service.tickets.list(status === undefined ? {} : { status })
     return { count: tickets.length, tickets }
@@ -72,7 +72,7 @@ export function renderListTickets(value: unknown): string {
 
 export function updateTicketBody(service: DocShieldService): ToolBody {
   return async (args, exec) => {
-    requireScope(exec, service.storageRoot, 'admin')
+    requireScope(exec, service, 'admin')
     const code = requireString(args, 'code', { max: 20 })
     const status = optionalStatus(args, 'status')
     if (status === undefined) throw new ArgumentError('Thiếu "status".')

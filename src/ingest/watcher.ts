@@ -10,6 +10,7 @@ import { readdir, stat } from 'node:fs/promises'
 import path from 'node:path'
 import type { DocumentStore } from '../db/documents.js'
 import type { Indexer } from './indexer.js'
+import type { DocScope } from '../scope.js'
 import { PUBLIC_SCOPE, targetForPath, type TargetResolver } from './layout.js'
 
 const DEBOUNCE_MS = 1000
@@ -25,17 +26,39 @@ export class StorageWatcher {
     private readonly store: DocumentStore,
     private readonly retiredPublic: () => string[],
     private readonly log: (message: string) => void,
+    /**
+     * Per-user instance (dsh-gate): index only the owned area — a user its own
+     * `users/<u>/docs`, the admin `public_docs` — so instances sharing one
+     * database never index the same file twice. Unset: the whole tree.
+     */
+    private readonly identity?: DocScope,
   ) {}
+
+  /** Index scope this watcher owns, or undefined for all. */
+  private get ownedScope(): string | undefined {
+    if (this.identity === undefined) return undefined
+    return this.identity.role === 'user' ? `user:${this.identity.userId}` : PUBLIC_SCOPE
+  }
+
+  private owns(file: string): boolean {
+    const owned = this.ownedScope
+    if (owned === undefined) return true
+    return targetForPath(this.storageRoot, file)?.scope === owned
+  }
 
   async reconcile(): Promise<void> {
     const files: string[] = []
     const usersDir = path.join(this.storageRoot, 'users')
+    const owned = this.ownedScope
     for (const user of await safeReaddir(usersDir)) {
+      if (owned !== undefined && owned !== `user:${user}`) continue
       const docs = path.join(usersDir, user, 'docs')
       for (const name of await safeReaddir(docs)) files.push(path.join(docs, name))
     }
     const publicDir = path.join(this.storageRoot, 'public_docs')
-    for (const name of await safeReaddir(publicDir)) files.push(path.join(publicDir, name))
+    if (owned === undefined || owned === PUBLIC_SCOPE) {
+      for (const name of await safeReaddir(publicDir)) files.push(path.join(publicDir, name))
+    }
 
     for (const file of files) {
       const target = this.resolve(file)
@@ -44,6 +67,7 @@ export class StorageWatcher {
     }
     const retired = new Set(this.retiredPublic())
     for (const doc of this.store.listAllLive()) {
+      if (owned !== undefined && doc.scope !== owned) continue
       const gone = !existsSync(doc.path)
       const retiredFile = doc.scope === PUBLIC_SCOPE && retired.has(doc.filename)
       if (gone || retiredFile) await this.indexer.remove(doc.scope, doc.doc_key)
@@ -55,7 +79,7 @@ export class StorageWatcher {
     this.watcher = watch(this.storageRoot, { recursive: true }, (_event, name) => {
       if (name === null) return
       const file = path.join(this.storageRoot, name.toString())
-      if (targetForPath(this.storageRoot, file) === null) return
+      if (targetForPath(this.storageRoot, file) === null || !this.owns(file)) return
       clearTimeout(this.timers.get(file))
       this.timers.set(file, setTimeout(() => {
         this.timers.delete(file)

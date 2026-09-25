@@ -5,19 +5,31 @@ Chatbot tra cứu tài liệu nội bộ cho nhiều người dùng, chạy trê
 - **Trả lời có bằng chứng:** câu trích phải là nguyên văn của tài liệu và được kiểm tra bằng code.
 - **Phiếu hỗ trợ:** tự tạo khi tài liệu không có câu trả lời, Admin phản hồi trong chat.
 
+## Hai cách triển khai
+
+| | **Khuyến nghị: `gate/` (dsh-gate, tự viết)** | Cũ: dsh-passwords |
+|---|---|---|
+| Đăng nhập | Cổng tự viết ở **:3444**: scrypt, cookie ký, tự đăng ký + admin duyệt, trang quản trị | Plugin bên thứ ba ở :3443 (GPL-3.0) |
+| Cách ly | **Mỗi user một tiến trình DSH riêng** (DSH_HOME riêng), không phải lọc lưu lượng | Một DSH chung, gateway lọc phiên/workspace |
+| Danh tính cho DocShield | Gate truyền qua cấu hình (`identity`) | Suy ra từ thư mục làm việc (cwd) của phiên |
+| Embedding | Một dịch vụ bge-m3 dùng chung (`scripts/embed-server.mjs`, :3490) | bge-m3 trong tiến trình DSH |
+| Chạy | `E:\Deepseek_Harness\start-gate.cmd` → http://127.0.0.1:3444 | `start-docshield.cmd` → http://127.0.0.1:3443 |
+
+Chi tiết cổng mới: [gate/README.md](gate/README.md). Các phần bên dưới mô tả cách cũ; plugin DocShield vẫn hỗ trợ cả hai cách, vì khi không cấu hình `identity` thì nó quay về suy danh tính từ cwd.
+
 | Thành phần | Vai trò |
 |---|---|
-| DeepSeek Harness 0.1.6-alpha.2 (bản riêng, cổng 3090, chỉ loopback) | Agent, giao diện chat |
-| `dsh-passwords` 2.7.3 (cổng **3443**) | Đăng nhập; owner = Admin; lọc workspace/phiên theo subuser; giới hạn agent mode |
+| DeepSeek Harness 0.1.6-alpha.2 (bản riêng, chỉ loopback) | Agent, giao diện chat |
+| `gate/` (khuyến nghị) hoặc `dsh-passwords` 2.7.3 | Đăng nhập, tách người dùng |
 | `dsh-docshield` (package này) | Công cụ DocShield, guard, nạp + lập chỉ mục, phiếu hỗ trợ, thẻ giao diện |
 | bge-m3 (ONNX int8, chạy offline) + SQLite (`sqlite-vec` + FTS5) | Tìm kiếm theo nghĩa + từ khóa |
 | Model chat: bất kỳ nhà cung cấp nào DSH hỗ trợ (demo: `nien-router/my-models-free` qua 9Router) | Sinh câu trả lời |
 
 ## Chạy
 1. Mở `E:\Deepseek_Harness\start-9router.cmd` (model chat).
-2. Mở `E:\Deepseek_Harness\start-docshield.cmd`.
-3. Trình duyệt: **http://127.0.0.1:3443**, đăng nhập.
-   > Không dùng cổng 3090: cổng này vào thẳng DSH, bỏ qua lớp đăng nhập. Không đưa URL có `?token=` trong cửa sổ console cho ai.
+2. Mở `E:\Deepseek_Harness\start-gate.cmd` (khuyến nghị), hoặc `start-docshield.cmd` nếu dùng cách cũ.
+3. Mở trình duyệt vào **http://127.0.0.1:3444** (gate), hoặc :3443 nếu dùng cách cũ.
+   > Không vào thẳng cổng của DSH: cổng đó bỏ qua lớp đăng nhập. Không đưa URL có `?token=` trong cửa sổ console cho ai.
 
 ## Cách hoạt động: danh tính = workspace
 Gateway chỉ cho subuser mở phiên trong thư mục được cấp. DocShield suy ra vai trò từ thư mục làm việc (cwd) của phiên:

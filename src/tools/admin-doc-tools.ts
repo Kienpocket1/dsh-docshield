@@ -16,7 +16,7 @@ async function asArgumentError<T>(work: () => Promise<T>): Promise<T> {
 
 export function publishBody(service: DocShieldService): ToolBody {
   return async (args, exec) => {
-    requireScope(exec, service.storageRoot, 'admin')
+    requireScope(exec, service, 'admin')
     const filename = requireString(args, 'filename', { max: 200 })
     const docKey = requireString(args, 'doc_key', { max: 64 })
     const replaces = typeof args.replaces === 'string' && args.replaces.trim() !== '' ? args.replaces.trim() : undefined
@@ -41,7 +41,7 @@ export function renderPublish(value: unknown): string {
 
 export function reindexBody(service: DocShieldService): ToolBody {
   return async (args, exec) => {
-    requireScope(exec, service.storageRoot, 'admin')
+    requireScope(exec, service, 'admin')
     const docKey = requireString(args, 'doc_key', { max: 64 })
     const result = await asArgumentError(() => service.reindexPublic(docKey))
     return { docKey, result }

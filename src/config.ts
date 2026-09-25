@@ -1,4 +1,5 @@
 import path from 'node:path'
+import { USER_ID_PATTERN, type DocScope } from './scope.js'
 
 /** Host row configuration (`cordis.yml` → `docshield-core.config`). */
 export interface CoreConfig {
@@ -8,6 +9,14 @@ export interface CoreConfig {
   readonly minSimilarity: number
   /** Default number of passages returned by scoped_doc_search. Default 5. */
   readonly topK: number
+  /**
+   * Set by dsh-gate for a per-user DSH instance: the instance belongs to this
+   * user (or to the admin), so scope no longer comes from the session cwd, the
+   * instance indexes only its own area, and its workspace is registered.
+   */
+  readonly identity?: DocScope
+  /** Shared embedding service (`scripts/embed-server.mjs`); unset = in-process bge-m3 worker. */
+  readonly embedUrl?: string
 }
 
 export const DEFAULT_MIN_SIMILARITY = 0.45
@@ -33,7 +42,28 @@ export function resolveCoreConfig(raw: unknown, env: NodeJS.ProcessEnv = process
   const topK = isRecord(raw) && typeof raw.topK === 'number' ? raw.topK : DEFAULT_TOP_K
   if (!(minSimilarity >= 0 && minSimilarity < 1)) throw new Error('docshield: config.minSimilarity must be in [0, 1)')
   if (!Number.isInteger(topK) || topK < 1 || topK > 8) throw new Error('docshield: config.topK must be an integer in 1..8')
-  return { storageRoot: path.resolve(storageRoot), minSimilarity, topK }
+  const identity = resolveIdentity(isRecord(raw) ? raw.identity : undefined)
+  const embedUrl = isRecord(raw) && typeof raw.embedUrl === 'string' && raw.embedUrl !== '' ? raw.embedUrl : undefined
+  if (embedUrl !== undefined && !/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//.test(embedUrl)) {
+    throw new Error('docshield: config.embedUrl must be a loopback http URL')
+  }
+  return {
+    storageRoot: path.resolve(storageRoot),
+    minSimilarity,
+    topK,
+    ...(identity !== undefined ? { identity } : {}),
+    ...(embedUrl !== undefined ? { embedUrl } : {}),
+  }
+}
+
+/** `{ user: '<id>' }` → user scope, `{ role: 'admin' }` → admin; absent → cwd-based identity. */
+function resolveIdentity(raw: unknown): DocScope | undefined {
+  if (raw === undefined || raw === null) return undefined
+  if (isRecord(raw) && raw.role === 'admin') return { role: 'admin' }
+  if (isRecord(raw) && (raw.role === undefined || raw.role === 'user') && typeof raw.user === 'string' && USER_ID_PATTERN.test(raw.user)) {
+    return { role: 'user', userId: raw.user }
+  }
+  throw new Error(`docshield: config.identity must be { user: "<id>" } or { role: "admin" } (got ${JSON.stringify(raw)})`)
 }
 
 /** @throws when `role` is missing or unknown, so a broken preset fails loudly at mount. */

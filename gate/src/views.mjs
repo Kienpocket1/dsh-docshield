@@ -1,0 +1,151 @@
+/** Server-rendered gate pages (no scripts; CSP forbids them). */
+import { MIN_PASSWORD_LENGTH } from './password.mjs'
+
+export const escapeHtml = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
+
+const STYLE = `
+:root{color-scheme:light dark;--bg:#f4f5f7;--card:#fff;--ink:#1f2937;--muted:#6b7280;--line:#d1d5db;--accent:#0f766e;--on-accent:#fff;--err:#b91c1c;--ok:#047857;--warn:#b45309;--chip:#eef2f7}
+@media (prefers-color-scheme:dark){:root{--bg:#0b1020;--card:#121a30;--ink:#e6eaf2;--muted:#9aa4b8;--line:#26345a;--accent:#22d3ee;--on-accent:#0b1020;--err:#f87171;--ok:#34d399;--warn:#fbbf24;--chip:#1a2442}}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,sans-serif}
+.center{min-height:100vh;display:grid;place-items:center;padding:16px}
+.card{width:min(380px,100%);background:var(--card);border:1px solid var(--line);border-radius:14px;padding:28px;display:grid;gap:14px}
+h1{margin:0;font-size:22px}h2{margin:24px 0 8px;font-size:18px}p{margin:0;color:var(--muted);font-size:14px}
+label{display:grid;gap:6px;font-size:14px}
+input{font:inherit;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:transparent;color:inherit;width:100%}
+button{font:inherit;font-weight:600;padding:10px 14px;border:0;border-radius:8px;background:var(--accent);color:var(--on-accent);cursor:pointer}
+button.ghost{background:var(--chip);color:var(--ink);font-weight:500;padding:6px 10px;font-size:13px}
+button.danger{background:transparent;color:var(--err);border:1px solid var(--err);font-weight:500;padding:6px 10px;font-size:13px}
+a{color:var(--accent)}.err{color:var(--err);font-size:14px}.ok{color:var(--ok);font-size:14px}
+.links{display:flex;gap:12px;justify-content:center;font-size:14px}
+.wide{max-width:1040px;margin:0 auto;padding:24px 16px 48px}
+.top{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}
+.table{width:100%;border-collapse:collapse;font-size:14px;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.table th,.table td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle}
+.table th{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+.scroll{overflow-x:auto}.actions{display:flex;flex-wrap:wrap;gap:6px}.actions form{margin:0}
+.pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;background:var(--chip)}
+.pill.pending{color:var(--warn)}.pill.off{color:var(--err)}.pill.on{color:var(--ok)}
+.banner{padding:12px 14px;border-radius:10px;border:1px solid var(--line);background:var(--card);margin:12px 0}
+.secret{font:600 20px/1.4 ui-monospace,monospace;letter-spacing:.05em}
+`
+
+export function renderPage(title, body) {
+  return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${escapeHtml(title)} — DocShield</title><style>${STYLE}</style></head><body>${body}</body></html>`
+}
+
+const errorBox = error => error ? `<div class="err" role="alert">${escapeHtml(error)}</div>` : ''
+const hidden = (name, value) => `<input type="hidden" name="${name}" value="${escapeHtml(value)}">`
+const card = (action, inner) => `<main class="center"><form class="card" method="post" action="${action}">${inner}</form></main>`
+
+export function renderLogin({ csrf, next, error, username, notice, registrationOpen }) {
+  return renderPage('Đăng nhập', card('/gate/login', `
+<h1>DocShield</h1><p>Đăng nhập để vào không gian làm việc của bạn.</p>${errorBox(error)}${notice ? `<div class="ok">${escapeHtml(notice)}</div>` : ''}
+<label>Tên đăng nhập<input name="username" autocomplete="username" required value="${escapeHtml(username)}" autofocus></label>
+<label>Mật khẩu<input name="password" type="password" autocomplete="current-password" required></label>
+${hidden('csrf', csrf)}${hidden('next', next)}
+<button type="submit">Đăng nhập</button>
+${registrationOpen ? '<div class="links"><a href="/gate/register">Chưa có tài khoản? Đăng ký</a></div>' : ''}`))
+}
+
+const newPasswordFields = `
+<label>Mật khẩu<input name="password" type="password" autocomplete="new-password" required minlength="${MIN_PASSWORD_LENGTH}"></label>
+<label>Nhập lại mật khẩu<input name="password2" type="password" autocomplete="new-password" required minlength="${MIN_PASSWORD_LENGTH}"></label>
+<p>Ít nhất ${MIN_PASSWORD_LENGTH} ký tự.</p>`
+
+const usernameField = (username, autofocus) => `
+<label>Tên đăng nhập<input name="username" autocomplete="username" required value="${escapeHtml(username)}"${autofocus ? ' autofocus' : ''}></label>
+<p>3–32 ký tự: chữ thường, số, dấu _ hoặc -. Đây cũng là tên thư mục tài liệu của bạn.</p>`
+
+export function renderSetup({ csrf, error, username }) {
+  return renderPage('Thiết lập lần đầu', card('/gate/setup', `
+<h1>Thiết lập lần đầu</h1>
+<p>Chưa có tài khoản nào. Tạo tài khoản <b>admin</b> đầu tiên. Mã thiết lập đang hiện trong cửa sổ chạy gate.</p>${errorBox(error)}
+<label>Mã thiết lập<input name="setup_key" autocomplete="off" required autofocus></label>
+${usernameField(username, false)}${newPasswordFields}${hidden('csrf', csrf)}
+<button type="submit">Tạo admin và đăng nhập</button>`))
+}
+
+export function renderRegister({ csrf, error, username }) {
+  return renderPage('Đăng ký', card('/gate/register', `
+<h1>Đăng ký tài khoản</h1><p>Sau khi gửi, tài khoản cần được admin duyệt mới đăng nhập được.</p>${errorBox(error)}
+${usernameField(username, true)}${newPasswordFields}${hidden('csrf', csrf)}
+<button type="submit">Gửi đăng ký</button>
+<div class="links"><a href="/gate/login">Đã có tài khoản? Đăng nhập</a></div>`))
+}
+
+export function renderNotice(title, message, link = { href: '/gate/login', label: 'Về trang đăng nhập' }) {
+  return renderPage(title, `<main class="center"><div class="card"><h1>${escapeHtml(title)}</h1><p>${escapeHtml(message)}</p>
+<div class="links"><a href="${link.href}">${escapeHtml(link.label)}</a></div></div></main>`)
+}
+
+export function renderPassword({ token, error, forced, username }) {
+  return renderPage('Đổi mật khẩu', card('/gate/password', `
+<h1>Đổi mật khẩu</h1>
+<p>${forced ? 'Mật khẩu của bạn vừa được admin đặt lại. Hãy đặt mật khẩu mới trước khi tiếp tục.' : `Tài khoản: ${escapeHtml(username)}`}</p>${errorBox(error)}
+<label>Mật khẩu hiện tại${forced ? ' (mật khẩu tạm)' : ''}<input name="current" type="password" autocomplete="current-password" required autofocus></label>
+${newPasswordFields}${hidden('token', token)}
+<button type="submit">Lưu mật khẩu mới</button>
+${forced ? '' : '<div class="links"><a href="/">Quay lại</a></div>'}`))
+}
+
+const MESSAGES = {
+  approved: 'Đã duyệt tài khoản.', rejected: 'Đã từ chối đơn đăng ký.', disabled: 'Đã khóa tài khoản; phiên làm việc của người này đã bị tắt.',
+  enabled: 'Đã mở khóa tài khoản.', made_admin: 'Đã cấp quyền admin.', made_user: 'Đã chuyển về người dùng thường.',
+  reg_open: 'Đã mở đăng ký tài khoản.', reg_closed: 'Đã tắt đăng ký tài khoản.',
+}
+
+const EVENT_LABELS = {
+  login: 'Đăng nhập', logout: 'Đăng xuất', login_failed: 'Sai mật khẩu', login_locked: 'Bị khóa tạm', login_pending: 'Đăng nhập khi chờ duyệt',
+  registered: 'Gửi đăng ký', approved: 'Được duyệt', rejected: 'Bị từ chối', user_disabled: 'Bị khóa', user_enabled: 'Được mở khóa',
+  role_changed: 'Đổi vai trò', password_reset: 'Admin đặt lại mật khẩu', password_changed: 'Đổi mật khẩu', setup_admin_created: 'Tạo admin đầu tiên',
+  setup_failed: 'Sai mã thiết lập', user_added: 'Tạo bằng dòng lệnh', registration_toggled: 'Bật/tắt đăng ký',
+}
+
+/** @param {{ token: string, me: object, users: object[], audit: object[], registrationOpen: boolean, ok?: string, error?: string, tempPassword?: { username: string, password: string } }} v */
+export function renderAdmin(v) {
+  const action = (username, act, label, cls = 'ghost') =>
+    `<form method="post" action="/gate/admin">${hidden('token', v.token)}${hidden('username', username)}${hidden('action', act)}<button class="${cls}" type="submit">${label}</button></form>`
+  const pending = v.users.filter(u => u.status === 'pending')
+  const accounts = v.users.filter(u => u.status !== 'pending')
+  const date = s => s ? escapeHtml(s.slice(0, 16).replace('T', ' ')) : '—'
+  const statusPill = u => u.disabled ? '<span class="pill off">Đã khóa</span>' : '<span class="pill on">Hoạt động</span>'
+  const self = u => u.username === v.me.username
+
+  const pendingTable = pending.length === 0 ? '<p>Không có đơn nào đang chờ.</p>' : `<div class="scroll"><table class="table"><thead><tr><th>Tên đăng nhập</th><th>Gửi lúc</th><th>Thao tác</th></tr></thead><tbody>
+${pending.map(u => `<tr><td>${escapeHtml(u.username)} <span class="pill pending">Chờ duyệt</span></td><td>${date(u.created_at)}</td>
+<td><div class="actions">${action(u.username, 'approve', 'Duyệt')}${action(u.username, 'reject', 'Từ chối', 'danger')}</div></td></tr>`).join('')}
+</tbody></table></div>`
+
+  const accountRows = accounts.map(u => `<tr><td>${escapeHtml(u.username)}${self(u) ? ' (bạn)' : ''}</td>
+<td>${u.role === 'admin' ? 'Admin' : 'Người dùng'}</td><td>${statusPill(u)}${u.must_change_password ? ' <span class="pill pending">Chờ đổi MK</span>' : ''}</td>
+<td>${date(u.last_login_at)}</td><td><div class="actions">
+${self(u) ? '' : (u.disabled ? action(u.username, 'enable', 'Mở khóa') : action(u.username, 'disable', 'Khóa', 'danger'))}
+${self(u) ? '' : (u.role === 'admin' ? action(u.username, 'make_user', 'Bỏ quyền admin') : action(u.username, 'make_admin', 'Cấp quyền admin'))}
+${self(u) ? '<a href="/gate/password">Đổi mật khẩu của bạn</a>' : action(u.username, 'reset_password', 'Đặt lại mật khẩu')}
+</div></td></tr>`).join('')
+
+  const auditRows = v.audit.map(a => `<tr><td>${date(a.at)}</td><td>${escapeHtml(a.username ?? '—')}</td><td>${escapeHtml(EVENT_LABELS[a.event] ?? a.event)}${a.detail ? ` · ${escapeHtml(a.detail)}` : ''}</td><td>${escapeHtml(a.ip ?? '')}</td></tr>`).join('')
+
+  return renderPage('Quản trị tài khoản', `<main class="wide">
+<div class="top"><h1>Quản trị tài khoản</h1><div class="actions"><a href="/">← Về DocShield</a></div></div>
+${v.ok && MESSAGES[v.ok] ? `<div class="banner ok" role="status">${MESSAGES[v.ok]}</div>` : ''}
+${v.error ? `<div class="banner err" role="alert">${escapeHtml(v.error)}</div>` : ''}
+${v.tempPassword ? `<div class="banner" role="status"><p>Mật khẩu tạm cho <b>${escapeHtml(v.tempPassword.username)}</b> — chỉ hiện một lần, hãy gửi cho người dùng. Họ sẽ phải đổi ngay khi đăng nhập.</p><div class="secret">${escapeHtml(v.tempPassword.password)}</div></div>` : ''}
+<div class="banner top"><span>Tự đăng ký tài khoản: <b>${v.registrationOpen ? 'đang mở' : 'đang tắt'}</b></span>
+${action('-', v.registrationOpen ? 'close_registration' : 'open_registration', v.registrationOpen ? 'Tắt đăng ký' : 'Mở đăng ký')}</div>
+<h2>Đơn đăng ký chờ duyệt (${pending.length})</h2>${pendingTable}
+<h2>Tài khoản (${accounts.length})</h2>
+<div class="scroll"><table class="table"><thead><tr><th>Tên đăng nhập</th><th>Vai trò</th><th>Trạng thái</th><th>Đăng nhập gần nhất</th><th>Thao tác</th></tr></thead><tbody>${accountRows}</tbody></table></div>
+<h2>Nhật ký gần đây</h2>
+<div class="scroll"><table class="table"><thead><tr><th>Thời điểm (UTC)</th><th>Tài khoản</th><th>Sự kiện</th><th>IP</th></tr></thead><tbody>${auditRows}</tbody></table></div>
+</main>`)
+}
+
+export function renderBar(user) {
+  const link = (href, label) => `<a href="${href}" style="color:#e6eaf2;text-decoration:none;padding:3px 8px;border-radius:999px;background:#26345a">${label}</a>`
+  return `<form method="post" action="/gate/logout" style="position:fixed;top:8px;right:12px;z-index:2147483647;margin:0;display:flex;gap:6px;align-items:center;font:12px system-ui,sans-serif;background:rgba(18,26,48,.88);color:#e6eaf2;border:1px solid #26345a;border-radius:999px;padding:4px 6px 4px 12px">
+<span>${escapeHtml(user.username)}${user.role === 'admin' ? ' · admin' : ''}</span>
+${user.role === 'admin' ? link('/gate/admin', 'Quản trị') : ''}${link('/gate/password', 'Đổi mật khẩu')}
+<button type="submit" style="font:inherit;border:0;border-radius:999px;padding:3px 10px;background:#26345a;color:#e6eaf2;cursor:pointer">Đăng xuất</button></form>`
+}

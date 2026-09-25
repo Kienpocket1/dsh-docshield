@@ -29,6 +29,12 @@ export interface ScopeOptions {
   readonly platform?: NodeJS.Platform
   /** Resolves symlinks/junctions; defaults to `realpathSync.native`, falling back to the input. */
   readonly realpath?: (p: string) => string
+  /**
+   * Fixed identity of a per-user DSH instance (set by dsh-gate). Every session
+   * of the instance then has this scope, whatever its cwd: the gate, not the
+   * folder, says who the user is.
+   */
+  readonly identity?: DocScope
 }
 
 const OUTSIDE: ScopeResolution = { inside: false, scope: null }
@@ -39,6 +45,7 @@ export function resolveScope(
   storageRoot: string,
   options: ScopeOptions = {},
 ): ScopeResolution {
+  if (options.identity !== undefined) return { inside: true, scope: options.identity }
   if (cwd === undefined || cwd === '') return OUTSIDE
   const p = (options.platform ?? process.platform) === 'win32' ? path.win32 : path.posix
   const real = options.realpath ?? defaultRealpath
@@ -57,6 +64,11 @@ export function resolveScope(
     return { inside: true, scope: { role: 'user', userId: owner } }
   }
   return INVALID
+}
+
+/** Workspace folder of a scope: `users/<u>` or `admin`. */
+export function workspaceFor(storageRoot: string, scope: DocScope): string {
+  return scope.role === 'user' ? path.join(storageRoot, 'users', scope.userId) : path.join(storageRoot, 'admin')
 }
 
 /** Search partitions a scope may read: users see public plus their own; admin sees public. */

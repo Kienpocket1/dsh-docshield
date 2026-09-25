@@ -1,0 +1,14 @@
+{
+  "name": "dsh-gate",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cổng đăng nhập đa người dùng cho DeepSeek Harness: mỗi user một tiến trình DSH riêng.",
+  "type": "module",
+  "license": "MIT",
+  "engines": { "node": ">=22.19" },
+  "bin": { "dsh-gate": "bin/gate.mjs" },
+  "scripts": {
+    "start": "node bin/gate.mjs serve",
+    "test": "node --test test/*.test.mjs"
+  }
+}

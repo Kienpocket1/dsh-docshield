@@ -23,13 +23,12 @@ export const inject = ['tools', 'docshield']
 export function apply(ctx: DshContext, rawConfig?: unknown): void {
   const { role } = resolveToolsConfig(rawConfig)
   const service = ctx.docshield
-  const { storageRoot } = service
   const allowed = role === 'admin' ? ADMIN_TOOLS : USER_TOOLS
 
   const bodies: Record<string, { body: ToolBody; render?: ToolRender }> = {
     list_documents: {
       body: async (_args, exec) => {
-        const documents = service.listDocuments(requireScope(exec, storageRoot, 'any'))
+        const documents = service.listDocuments(requireScope(exec, service, 'any'))
         return { count: documents.length, documents }
       },
     },
@@ -47,7 +46,7 @@ export function apply(ctx: DshContext, rawConfig?: unknown): void {
     if (!allowed.has(spec.name)) continue
     const entry = bodies[spec.name]
     if (entry === undefined) throw new Error(`docshield-tools: no implementation for ${spec.name}`)
-    const definition = defineDocTool(spec, storageRoot, entry.body, entry.render)
+    const definition = defineDocTool(spec, service, entry.body, entry.render)
     ctx.effect(() => ctx.tools.register(definition), `docshield-tools: ${spec.name}`)
   }
 }

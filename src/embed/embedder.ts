@@ -99,6 +99,44 @@ export class WorkerEmbedder implements Embedder {
 }
 
 /**
+ * Client of the shared embedding service (`scripts/embed-server.mjs`): one
+ * bge-m3 for every per-user DSH instance instead of one model per process.
+ * POST {texts} → {vectors: number[][]}, batched like the worker.
+ */
+export class RemoteEmbedder implements Embedder {
+  private readonly batchSize: number
+
+  constructor(private readonly url: string, options: { batchSize?: number } = {}) {
+    this.batchSize = options.batchSize ?? 16
+  }
+
+  async embed(texts: readonly string[], onProgress?: EmbedProgress): Promise<Float32Array[]> {
+    const out: Float32Array[] = []
+    for (let i = 0; i < texts.length; i += this.batchSize) {
+      const batch = texts.slice(i, i + this.batchSize)
+      const res = await fetch(this.url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ texts: batch }),
+      }).catch((error: unknown) => {
+        throw new Error(`dịch vụ embedding không phản hồi (${this.url}): ${error instanceof Error ? error.message : String(error)}`)
+      })
+      if (!res.ok) throw new Error(`dịch vụ embedding lỗi HTTP ${res.status}: ${await res.text()}`)
+      const body = await res.json() as { vectors?: number[][] }
+      if (!Array.isArray(body.vectors) || body.vectors.length !== batch.length) throw new Error('dịch vụ embedding trả kết quả sai số lượng')
+      for (const v of body.vectors) {
+        if (v.length !== EMBEDDING_DIMS) throw new Error(`vector sai số chiều: ${v.length}`)
+        out.push(Float32Array.from(v))
+      }
+      onProgress?.(out.length, texts.length)
+    }
+    return out
+  }
+
+  async dispose(): Promise<void> {}
+}
+
+/**
  * Deterministic bag-of-words embedder for tests: same text → same unit
  * vector, shared words → positive similarity. Never used in production.
  */

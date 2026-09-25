@@ -9,7 +9,7 @@ import { openDatabase, transaction } from './db/database.js'
 import { DocumentStore } from './db/documents.js'
 import { PublicFiles } from './db/public-files.js'
 import { TicketStore } from './db/tickets.js'
-import { WorkerEmbedder, type Embedder } from './embed/embedder.js'
+import { RemoteEmbedder, WorkerEmbedder, type Embedder } from './embed/embedder.js'
 import { Indexer, type IngestResult } from './ingest/indexer.js'
 import { bindingResolver, PUBLIC_SCOPE, type TargetResolver } from './ingest/layout.js'
 import { docKeyFromFilename, resolveInside, sanitizeFilename } from './ingest/sanitize.js'
@@ -17,7 +17,7 @@ import { StorageWatcher } from './ingest/watcher.js'
 import { DEFAULT_MIN_SIMILARITY, DEFAULT_TOP_K } from './config.js'
 import { EvidenceLedger, verifyCitations, type Citation, type VerifiedEvidence } from './retrieval/evidence.js'
 import { hybridSearch, type SearchResult } from './retrieval/search.js'
-import { readableScopes, type DocScope } from './scope.js'
+import { readableScopes, type DocScope, type ScopeOptions } from './scope.js'
 
 export interface DocumentSummary {
   readonly filename: string
@@ -38,6 +38,10 @@ export interface ServiceOptions {
   readonly dbFile?: string
   readonly minSimilarity?: number
   readonly topK?: number
+  /** Fixed identity of a per-user instance (dsh-gate); see CoreConfig.identity. */
+  readonly identity?: DocScope
+  /** Shared embedding service URL; ignored when `embedder` is given. */
+  readonly embedUrl?: string
 }
 
 export class DocShieldService {
@@ -53,9 +57,15 @@ export class DocShieldService {
   readonly log: (message: string) => void
   readonly minSimilarity: number
   readonly topK: number
+  /** Scope resolution for guard, tools and uploads: fixed identity or the session cwd. */
+  readonly scopeOptions: ScopeOptions
 
   constructor(readonly storageRoot: string, options: ServiceOptions = {}) {
-    this.embedder = options.embedder ?? new WorkerEmbedder({ modelsDir: path.join(storageRoot, '.docshield', 'models') })
+    this.embedder = options.embedder
+      ?? (options.embedUrl !== undefined
+        ? new RemoteEmbedder(options.embedUrl)
+        : new WorkerEmbedder({ modelsDir: path.join(storageRoot, '.docshield', 'models') }))
+    this.scopeOptions = options.identity !== undefined ? { identity: options.identity } : {}
     this.log = options.log ?? (message => console.log(`[docshield] ${message}`))
     this.minSimilarity = options.minSimilarity ?? DEFAULT_MIN_SIMILARITY
     this.topK = options.topK ?? DEFAULT_TOP_K
@@ -65,7 +75,7 @@ export class DocShieldService {
     this.publicFiles = new PublicFiles(this.db)
     this.resolve = bindingResolver(storageRoot, this.publicFiles)
     this.indexer = new Indexer(this.store, this.embedder, this.log)
-    this.watcher = new StorageWatcher(storageRoot, this.resolve, this.indexer, this.store, () => this.publicFiles.retiredFilenames(), this.log)
+    this.watcher = new StorageWatcher(storageRoot, this.resolve, this.indexer, this.store, () => this.publicFiles.retiredFilenames(), this.log, options.identity)
   }
 
   /** Search the partitions `scope` may read and remember the hits for citation checks. */

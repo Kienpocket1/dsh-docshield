@@ -10,7 +10,7 @@ export const NOT_FOUND_SENTENCE = 'Không tìm thấy thông tin này trong tài
 
 export function searchBody(service: DocShieldService): ToolBody {
   return async (args, exec) => {
-    const scope = requireScope(exec, service.storageRoot, 'any')
+    const scope = requireScope(exec, service, 'any')
     const query = requireString(args, 'query', { max: 1000 })
     const k = optionalInt(args, 'k', 1, 8)
     const sessionId = exec.agent?.session.id ?? 'unknown'
@@ -38,7 +38,7 @@ export interface AnswerValue {
 
 export function answerBody(service: DocShieldService): ToolBody {
   return async (args, exec) => {
-    const scope = requireScope(exec, service.storageRoot, 'any')
+    const scope = requireScope(exec, service, 'any')
     const answer = requireString(args, 'answer', { max: 4000 })
     const citations = requireCitations(args)
     const sessionId = exec.agent?.session.id ?? 'unknown'

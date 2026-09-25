@@ -7,7 +7,7 @@
  */
 import { chmod, copyFile, mkdir } from 'node:fs/promises'
 import type { SessionView } from '../dsh-types.js'
-import { resolveScope } from '../scope.js'
+import { resolveScope, type ScopeOptions } from '../scope.js'
 import type { IngestResult, Indexer } from './indexer.js'
 import { uploadDirFor, type TargetResolver } from './layout.js'
 import { assertSize, resolveInside, sanitizeFilename } from './sanitize.js'
@@ -56,11 +56,13 @@ export async function ingestUploads(
     attachments: AttachmentsView
     indexer: Indexer
     resolve: TargetResolver
+    /** Fixed identity of a per-user instance; default: scope from the session cwd. */
+    scopeOptions?: ScopeOptions
     /** Called once a file is admitted and copied, before indexing (which can take minutes). */
     onAccepted?: (filename: string) => void
   },
 ): Promise<IngestedUpload[]> {
-  const { scope } = resolveScope(session.header.cwd, deps.storageRoot)
+  const { scope } = resolveScope(session.header.cwd, deps.storageRoot, deps.scopeOptions)
   if (scope === null || refs.length === 0) return []
   const { dir } = uploadDirFor(deps.storageRoot, scope)
   const results: IngestedUpload[] = []

@@ -3,7 +3,7 @@
  * schemas with placeholder bodies; later milestones replace `execute`.
  */
 import type { ContentBlock, RawToolDefinition, ToolExecutionView } from '../dsh-types.js'
-import { requireScope } from './scope-check.js'
+import { requireScope, type ScopeSource } from './scope-check.js'
 
 type Needs = 'user' | 'admin' | 'any'
 
@@ -95,7 +95,7 @@ export type ToolBody = (args: Record<string, unknown>, exec: ToolExecutionView) 
 export type ToolRender = (value: unknown) => string
 
 /** Wrap a spec with scope enforcement and a JSON-object result; `render` shapes the model-facing text. */
-export function defineDocTool(spec: ToolSpec, storageRoot: string, body: ToolBody, render?: ToolRender): RawToolDefinition {
+export function defineDocTool(spec: ToolSpec, source: ScopeSource, body: ToolBody, render?: ToolRender): RawToolDefinition {
   return {
     name: spec.name,
     description: spec.description,
@@ -106,7 +106,7 @@ export function defineDocTool(spec: ToolSpec, storageRoot: string, body: ToolBod
       presentationMeta: (_args, value) => value,
     },
     async execute(args, exec) {
-      requireScope(exec, storageRoot, spec.needs)
+      requireScope(exec, source, spec.needs)
       if (typeof args !== 'object' || args === null || Array.isArray(args)) {
         throw new Error('DocShield: tham số công cụ phải là object.')
       }
