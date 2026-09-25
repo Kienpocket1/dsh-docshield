@@ -23,6 +23,16 @@ E:\Deepseek_Harness\start-gate.cmd
 ```
 Mở http://127.0.0.1:3444. Mỗi DSH riêng khởi động khi người dùng đăng nhập (mất khoảng 10–20 giây) và tự tắt sau 30 phút không có hoạt động.
 
+## Cho máy khác truy cập
+
+| Cách | Lệnh | Ai vào được |
+|---|---|---|
+| Chỉ máy này (mặc định) | `start-gate.cmd` | http://127.0.0.1:3444 |
+| Cùng mạng LAN | `start-gate.cmd lan` + mở cổng 3444 trên tường lửa (loại mạng Private) | `http://<IP máy này>:3444`, HTTP không mã hóa |
+| Qua internet bằng link | `start-gate.cmd tunnel` (cần cài `cloudflared`) | `https://….trycloudflare.com`, có HTTPS, không cần mở cổng |
+
+Chế độ tunnel bật `GATE_TRUST_PROXY=1`. Khi đó gate lấy IP thật của người dùng từ header `CF-Connecting-IP`, để chống dò mật khẩu và giới hạn đăng ký theo từng người chứ không gộp chung một IP. Header này chỉ được tin khi request đến từ chính máy này. Cookie cũng được gắn cờ `Secure`. Link quick tunnel đổi mỗi lần chạy; tắt cửa sổ tunnel là ngắt truy cập từ ngoài.
+
 ## Thiết lập lần đầu
 
 Khi chưa có tài khoản nào, cửa sổ gate in ra một **mã thiết lập** dùng một lần, và mọi trang đều chuyển về `/gate/setup`. Nhập mã đó cùng tên và mật khẩu để tạo **admin** đầu tiên; gate đăng nhập luôn cho bạn. Có tài khoản rồi thì trang này tự khóa. Nhập sai mã nhiều lần cũng bị khóa tạm, giống như đăng nhập sai.

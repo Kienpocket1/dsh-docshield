@@ -11,6 +11,8 @@ export function loadConfig() {
   return {
     host: env.GATE_HOST ?? '127.0.0.1',
     port: Number(env.GATE_PORT ?? 3444),
+    // Set to 1 when a local tunnel (cloudflared) forwards internet traffic to the gate.
+    trustProxy: env.GATE_TRUST_PROXY === '1',
     varDir,
     instances: {
       dshBin: env.GATE_DSH_BIN ?? 'E:/Deepseek_Harness/spike-dshpw/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js',

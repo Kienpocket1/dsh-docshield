@@ -67,7 +67,7 @@ async function serve() {
   const instances = new InstanceManager({ ...config.instances, log })
   // No account yet: allow /gate/setup, guarded by a one-time key only this console shows.
   const setupKey = store.countUsers() === 0 ? randomBytes(6).toString('hex').match(/.{4}/g).join('-') : undefined
-  const gate = createGate({ store, secret: loadSecret(path.join(config.varDir, 'secret.key')), instances, setupKey, log })
+  const gate = createGate({ store, secret: loadSecret(path.join(config.varDir, 'secret.key')), instances, setupKey, trustProxy: config.trustProxy, log })
   await new Promise(resolve => gate.listen(config.port, config.host, resolve))
   log(`dsh-gate: http://${config.host}:${config.port}`)
   if (setupKey !== undefined) {

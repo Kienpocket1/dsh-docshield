@@ -34,18 +34,32 @@ const PAGE_HEADERS = {
  * @param {{ get(user: object): Promise<import('./instance.mjs').Instance>, socketOpened?(user: string, socket: import('node:stream').Duplex): void, stop?(user: string): Promise<void> }} deps.instances
  * @param {string} [deps.setupKey] one-time key printed on the console while no account exists;
  *   it guards /gate/setup, which creates the first admin
+ * @param {boolean} [deps.trustProxy] behind a local tunnel (cloudflared): take the client IP from
+ *   CF-Connecting-IP / X-Forwarded-For and mark cookies Secure over https — only for requests
+ *   arriving from this machine, so remote clients cannot spoof their IP
  * @param {(msg: string) => void} [deps.log]
  */
-export function createGate({ store, secret, instances, setupKey, log = () => {} }) {
+export function createGate({ store, secret, instances, setupKey, trustProxy = false, log = () => {} }) {
   const setupOpen = () => setupKey !== undefined && store.countUsers() === 0
   const sessionValue = req => parseCookies(req.headers.cookie)[SESSION_COOKIE]
   const currentUser = req => verifySession(secret, sessionValue(req), name => store.getUser(name))
-  const ipOf = req => req.socket.remoteAddress ?? 'unknown'
+  const fromTrustedProxy = req => trustProxy && isLoopback(req.socket.remoteAddress)
+  const ipOf = req => {
+    if (fromTrustedProxy(req)) {
+      const cf = req.headers['cf-connecting-ip']
+      if (typeof cf === 'string' && cf.trim() !== '') return cf.trim()
+      const xff = req.headers['x-forwarded-for']
+      if (typeof xff === 'string' && xff.trim() !== '') return xff.split(',')[0].trim()
+    }
+    return req.socket.remoteAddress ?? 'unknown'
+  }
+  const viaHttps = req => fromTrustedProxy(req) && req.headers['x-forwarded-proto'] === 'https'
   const tokenFor = req => formToken(secret, sessionValue(req))
   const signIn = user => cookie(SESSION_COOKIE, issueSession(secret, user), { maxAgeSec: SESSION_TTL_MS / 1000 })
   const clearCsrf = cookie(CSRF_COOKIE, '', { maxAgeSec: 0 })
 
   const server = http.createServer((req, res) => {
+    if (viaHttps(req)) secureCookies(res)
     handle(req, res).catch(err => {
       log(`error ${req.method} ${req.url}: ${err.stack ?? err}`)
       if (!res.headersSent) res.writeHead(500, { 'content-type': 'text/plain; charset=utf-8' })
@@ -352,6 +366,18 @@ export function createGate({ store, secret, instances, setupKey, log = () => {} 
 
   return server
 }
+
+/** Over https (via the tunnel) every cookie the gate sets gets the Secure flag. */
+function secureCookies(res) {
+  const writeHead = res.writeHead.bind(res)
+  res.writeHead = (status, headers) => {
+    const c = headers?.['set-cookie']
+    if (c !== undefined) headers['set-cookie'] = [].concat(c).map(v => (/;\s*Secure/i.test(v) ? v : `${v}; Secure`))
+    return writeHead(status, headers)
+  }
+}
+
+const isLoopback = addr => addr === '127.0.0.1' || addr === '::1' || addr === '::ffff:127.0.0.1'
 
 function page(res, status, html) {
   res.writeHead(status, PAGE_HEADERS)
