@@ -1,8 +1,9 @@
 **/node_modules
 .git
 gate
-spikes
-tests
-src
-demo
+project3
+docshield/src
+docshield/tests
+docshield/demo
+docshield/scripts
 *.log

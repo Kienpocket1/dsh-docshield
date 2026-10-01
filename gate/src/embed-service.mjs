@@ -1,7 +1,7 @@
 /**
  * A long-running helper process owned by the gate, restarted with back-off if
- * it dies: the shared bge-m3 service (dsh-docshield/scripts/embed-server.mjs)
- * and, in docker mode, the host DocShield service (scripts/docshield-server.mjs).
+ * it dies: the shared bge-m3 service (docshield/scripts/embed-server.mjs)
+ * and, in docker mode, the host DocShield service (docshield/scripts/docshield-server.mjs).
  */
 import { spawn } from 'node:child_process'
 

@@ -1,5 +1,5 @@
 # One user's DeepSeek Harness + DocShield, started by dsh-gate (GATE_RUNTIME=docker).
-# Build from the dsh-docshield root after `npm run build`:
+# Build from the repo root after `npm run build` in docshield/:
 #   docker build -f container/Dockerfile -t docshield-dsh:dev .
 FROM node:24-bookworm-slim
 
@@ -14,12 +14,12 @@ RUN npm init -y >/dev/null && npm install --omit=dev "@deepseek-ai/dsh@${DSH_VER
 
 # DocShield embeds through the gate's shared service, so the in-process model (transformers) is left out.
 WORKDIR /opt/docshield
-COPY package.json ./
+COPY docshield/package.json ./
 RUN npm pkg delete devDependencies "dependencies.@huggingface/transformers" \
  && npm install --omit=dev && npm cache clean --force
-COPY cordis.yml ./
-COPY presets ./presets
-COPY dist ./dist
+COPY docshield/cordis.yml ./
+COPY docshield/presets ./presets
+COPY docshield/dist ./dist
 # S4: "DocShield + công cụ" presets = this DSH's Standard tool rows + DocShield persona and tools.
 COPY container/make-harness-presets.mjs /tmp/
 RUN node /tmp/make-harness-presets.mjs /opt/dsh/node_modules/@deepseek-ai/dsh-agent-presets/presets/standard ./presets && rm /tmp/make-harness-presets.mjs

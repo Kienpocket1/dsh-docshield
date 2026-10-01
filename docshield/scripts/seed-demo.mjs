@@ -46,7 +46,7 @@ if (args.has('--reset')) {
     process.exit(0)
   }
   if (dshRunning()) {
-    console.error('\n[LỖI] DocShield đang chạy (cổng 3090). Tắt cửa sổ start-docshield.cmd rồi chạy lại.')
+    console.error('\n[LỖI] DocShield đang chạy (cổng 3090). Tắt cửa sổ start-gate.cmd rồi chạy lại.')
     process.exit(1)
   }
   for (const f of doomed) rmSync(f, { force: true })

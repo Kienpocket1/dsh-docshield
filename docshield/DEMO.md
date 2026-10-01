@@ -1,7 +1,7 @@
 # Kịch bản demo DocShield (~15 phút)
 
 **Chuẩn bị** (làm trước buổi demo):
-1. Chạy `start-9router.cmd`, rồi `start-docshield.cmd`.
+1. Chạy `start-9router.cmd`, rồi `start-gate.cmd`.
 2. `node scripts/seed-demo.mjs`: chỉ có quy chế **v1** (`quy_che_hoc_vu.md`) và `cv_bob.txt`.
 3. `node scripts/doctor.mjs` báo *Không có lỗi*.
 4. Mở 3 cửa sổ trình duyệt vào http://127.0.0.1:3443:

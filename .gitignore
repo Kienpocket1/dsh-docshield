@@ -1,5 +1,5 @@
-node_modules/
-dist/
+**/node_modules/
+**/dist/
 *.log
 
 # dsh-gate runtime data: accounts DB, cookie secret, per-user DSH homes (settings + API keys), test accounts

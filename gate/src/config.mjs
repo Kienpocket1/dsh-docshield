@@ -48,15 +48,15 @@ export function loadConfig() {
       },
     },
     embed: {
-      script: env.GATE_EMBED_SCRIPT ?? path.join(root, '..', 'scripts', 'embed-server.mjs'),
+      script: env.GATE_EMBED_SCRIPT ?? path.join(root, '..', 'docshield', 'scripts', 'embed-server.mjs'),
       port: embedPort,
       // bge-m3 files; default <storage>/.docshield/models.
       models: env.GATE_EMBED_MODELS,
     },
-    // Docker mode only: the one process that opens the DocShield database (scripts/docshield-server.mjs).
+    // Docker mode only: the one process that opens the DocShield database (docshield/scripts/docshield-server.mjs).
     llmProxyPort: llmPort,
     docshieldServer: {
-      script: path.join(root, '..', 'scripts', 'docshield-server.mjs'),
+      script: path.join(root, '..', 'docshield', 'scripts', 'docshield-server.mjs'),
       port: docshieldPort,
     },
   }
