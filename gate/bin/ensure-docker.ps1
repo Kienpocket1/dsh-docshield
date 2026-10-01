@@ -47,7 +47,7 @@ if ($Rebuild -or $LASTEXITCODE -ne 0) {
   Write-Host "  Build image $Image (lan dau mat vai phut)..."
   Push-Location (Resolve-Path (Join-Path $PSScriptRoot '..\..'))
   try {
-    npm run build
+    npm --prefix docshield run build
     if ($LASTEXITCODE -ne 0) { Write-Host '[LOI] npm run build that bai.'; exit 1 }
     & $docker build -f container/Dockerfile -t $Image .
     if ($LASTEXITCODE -ne 0) { Write-Host '[LOI] docker build that bai.'; exit 1 }
