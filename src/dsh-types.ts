@@ -6,7 +6,18 @@
  * symbols such as the scope key would not match). These interfaces describe
  * only the fields we read; the live objects come from injected services.
  */
-import type { DocShieldService } from './service.js'
+import type { ScopeOptions } from './scope.js'
+import type { DocInvoke } from './tools/calls.js'
+
+/**
+ * The `docshield` service as the tool rows see it: the in-process
+ * DocShieldService, or (docker mode) RemoteDocShield talking to the host service.
+ */
+export interface DocShieldBackend {
+  readonly storageRoot: string
+  readonly scopeOptions: ScopeOptions
+  readonly invoke: DocInvoke
+}
 
 export interface SessionHeaderView {
   readonly cwd?: string
@@ -64,7 +75,7 @@ export interface SessionEventView {
 /** The subset of a Cordis context DocShield touches. */
 export interface DshContext {
   readonly tools: ToolsService
-  readonly docshield: DocShieldService
+  readonly docshield: DocShieldBackend
   inject(deps: string[], callback: (ctx: DshContext) => void): void
   effect(execute: () => () => unknown, label?: string): void
   provide(name: string, value: unknown): void

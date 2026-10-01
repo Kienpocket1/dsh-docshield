@@ -17,6 +17,18 @@ export interface CoreConfig {
   readonly identity?: DocScope
   /** Shared embedding service (`scripts/embed-server.mjs`); unset = in-process bge-m3 worker. */
   readonly embedUrl?: string
+  /**
+   * Host DocShield service (`scripts/docshield-server.mjs`) for a container
+   * instance: tools and uploads go there with the token from DOCSHIELD_TOKEN,
+   * and this instance opens no database. Requires `identity`.
+   */
+  readonly serviceUrl?: string
+  /**
+   * Container instance only (requires `serviceUrl`): let the harness tools
+   * (shell, files, search…) run beside DocShield's; the container is their
+   * sandbox. DocShield's admin tools stay admin-only.
+   */
+  readonly allowOtherTools?: boolean
 }
 
 export const DEFAULT_MIN_SIMILARITY = 0.45
@@ -43,17 +55,30 @@ export function resolveCoreConfig(raw: unknown, env: NodeJS.ProcessEnv = process
   if (!(minSimilarity >= 0 && minSimilarity < 1)) throw new Error('docshield: config.minSimilarity must be in [0, 1)')
   if (!Number.isInteger(topK) || topK < 1 || topK > 8) throw new Error('docshield: config.topK must be an integer in 1..8')
   const identity = resolveIdentity(isRecord(raw) ? raw.identity : undefined)
-  const embedUrl = isRecord(raw) && typeof raw.embedUrl === 'string' && raw.embedUrl !== '' ? raw.embedUrl : undefined
-  if (embedUrl !== undefined && !/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//.test(embedUrl)) {
-    throw new Error('docshield: config.embedUrl must be a loopback http URL')
-  }
+  const embedUrl = localUrl(raw, 'embedUrl')
+  const serviceUrl = localUrl(raw, 'serviceUrl')
+  if (serviceUrl !== undefined && identity === undefined) throw new Error('docshield: config.serviceUrl requires config.identity')
+  const allowOtherTools = isRecord(raw) && raw.allowOtherTools === true
+  // Outside a container nothing would contain those tools: refuse rather than open the host.
+  if (allowOtherTools && serviceUrl === undefined) throw new Error('docshield: config.allowOtherTools is only allowed with serviceUrl (per-user container)')
   return {
     storageRoot: path.resolve(storageRoot),
     minSimilarity,
     topK,
     ...(identity !== undefined ? { identity } : {}),
     ...(embedUrl !== undefined ? { embedUrl } : {}),
+    ...(serviceUrl !== undefined ? { serviceUrl } : {}),
+    ...(allowOtherTools ? { allowOtherTools } : {}),
   }
+}
+
+/** An http URL on this machine; host.docker.internal = this machine as seen from a per-user container. */
+function localUrl(raw: unknown, key: 'embedUrl' | 'serviceUrl'): string | undefined {
+  const value = isRecord(raw) && typeof raw[key] === 'string' && raw[key] !== '' ? raw[key] as string : undefined
+  if (value !== undefined && !/^http:\/\/(127\.0\.0\.1|localhost|host\.docker\.internal)(:\d+)?(\/|$)/.test(value)) {
+    throw new Error(`docshield: config.${key} must be a loopback (or host.docker.internal) http URL`)
+  }
+  return value
 }
 
 /** `{ user: '<id>' }` → user scope, `{ role: 'admin' }` → admin; absent → cwd-based identity. */

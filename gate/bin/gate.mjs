@@ -7,6 +7,7 @@
 //   node bin/gate.mjs user approve|reject <name>   (self-registration requests)
 //   node bin/gate.mjs user list
 //   node bin/gate.mjs audit [n]
+import { execFileSync } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { mkdirSync } from 'node:fs'
 import path from 'node:path'
@@ -15,6 +16,7 @@ import { createGate } from '../src/app.mjs'
 import { EmbedService } from '../src/embed-service.mjs'
 import { loadConfig } from '../src/config.mjs'
 import { InstanceManager } from '../src/instance.mjs'
+import { createLlmProxy } from '../src/llm-proxy.mjs'
 import { hashPassword } from '../src/password.mjs'
 import { loadSecret } from '../src/session.mjs'
 import { GateStore } from '../src/store.mjs'
@@ -61,10 +63,55 @@ try {
 
 async function serve() {
   const log = msg => console.log(`${new Date().toISOString().slice(11, 19)} ${msg}`)
-  const embed = new EmbedService({ ...config.embed, env: { DOCSHIELD_STORAGE_ROOT: config.instances.docshield.storageRoot }, log })
+  const docker = config.instances.runtime === 'docker'
+  if (docker) {
+    const { bin, image } = config.instances.docker
+    try {
+      execFileSync(bin, ['image', 'inspect', image], { stdio: 'ignore', windowsHide: true })
+    } catch {
+      console.error(`[LOI] GATE_RUNTIME=docker nhung khong dung duoc image ${image} (Docker Desktop chua chay, hoac chua build: docker build -f container/Dockerfile -t ${image} .)`)
+      process.exit(1)
+    }
+  }
+  const storageEnv = { DOCSHIELD_STORAGE_ROOT: config.instances.docshield.storageRoot }
+  const embed = new EmbedService({ ...config.embed, args: config.embed.models ? ['--models', config.embed.models] : [], env: storageEnv, log })
   await embed.start()
   log(`embedding service: ${embed.url}`)
-  const instances = new InstanceManager({ ...config.instances, log })
+
+  let docshield
+  let instances
+  if (docker) {
+    // Docker mode: the host DocShield service owns the database; containers get per-start tokens.
+    const adminKey = randomBytes(32).toString('base64url')
+    const tokenCall = async (method, body) => {
+      const res = await fetch(`${docshield.origin}/v1/tokens`, { method, headers: { 'x-docshield-admin': adminKey, 'content-type': 'application/json' }, body: JSON.stringify(body) })
+      if (!res.ok) throw new Error(`DocShield token ${method} failed: HTTP ${res.status}`)
+    }
+    config.instances.docshieldTokens = {
+      register: (token, scope) => tokenCall('PUT', { token, scope }),
+      revoke: token => tokenCall('DELETE', { token }),
+    }
+    docshield = new EmbedService({
+      ...config.docshieldServer, name: 'docshield-server', args: ['--embed-url', embed.url],
+      env: { ...storageEnv, DOCSHIELD_ADMIN_KEY: adminKey },
+      // A restarted service has forgotten the tokens of running containers.
+      onHealthy: () => instances?.reRegisterTokens(),
+      log,
+    })
+    await docshield.start()
+    log(`runtime: docker (image ${config.instances.docker.image}); DocShield service ${docshield.origin}`)
+  }
+  instances = new InstanceManager({ ...config.instances, log })
+  let llmProxy
+  if (docker) {
+    // Containers never get the real model keys: their provider routes point here with their own token.
+    const providers = instances.llmProviders()
+    llmProxy = createLlmProxy({ providers, verify: token => instances.tokenOwner(token), log })
+    await new Promise((resolve, reject) => llmProxy.once('error', reject).listen(config.llmProxyPort, '127.0.0.1', resolve))
+    log(`model proxy: http://127.0.0.1:${config.llmProxyPort} (${providers.map(p => p.name).join(', ') || 'no provider with baseURL + key'})`)
+  }
+  const orphans = instances.removeOrphans()
+  if (orphans.length) log(`removed leftover containers: ${orphans.join(', ')}`)
   // No account yet: allow /gate/setup, guarded by a one-time key only this console shows.
   const setupKey = store.countUsers() === 0 ? randomBytes(6).toString('hex').match(/.{4}/g).join('-') : undefined
   const gate = createGate({ store, secret: loadSecret(path.join(config.varDir, 'secret.key')), instances, setupKey, trustProxy: config.trustProxy, log })
@@ -82,6 +129,8 @@ async function serve() {
   const shutdown = async () => {
     log('Đang tắt các phiên làm việc...')
     await instances.stopAll()
+    llmProxy?.close()
+    docshield?.stop()
     embed.stop()
     store.close()
     process.exit(0)
@@ -97,7 +146,8 @@ async function askPassword(confirm) {
   if (flag('--password-stdin')) {
     const chunks = []
     for await (const c of process.stdin) chunks.push(c)
-    return Buffer.concat(chunks).toString('utf8').replace(/\r?\n$/, '')
+    // PowerShell pipes may prefix a BOM; it is never part of the password.
+    return Buffer.concat(chunks).toString('utf8').replace(/^﻿/, '').replace(/\r?\n$/, '')
   }
   const first = await hiddenPrompt('Mật khẩu: ')
   if (confirm && first !== await hiddenPrompt('Nhập lại: ')) throw new Error('Hai lần nhập không khớp.')

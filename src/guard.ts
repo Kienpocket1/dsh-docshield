@@ -23,7 +23,12 @@ export const ADMIN_TOOLS: ReadonlySet<string> = new Set([
   'reindex_document',
 ])
 
-export function createGuard(storageRoot: string, options: ScopeOptions = {}): ToolGuard {
+/**
+ * @param allowOtherTools per-user container (sandbox S4): shell, file and the
+ *   other harness tools run inside the container's own sandbox, so only the
+ *   DocShield tools stay role-checked here. Never set outside a container.
+ */
+export function createGuard(storageRoot: string, options: ScopeOptions = {}, allowOtherTools = false): ToolGuard {
   return (exec: Readonly<ToolExecutionView>) => {
     const { inside, scope } = resolveScope(exec.agent?.session.header.cwd, storageRoot, options)
     if (!inside) return undefined
@@ -31,9 +36,8 @@ export function createGuard(storageRoot: string, options: ScopeOptions = {}): To
       return 'DocShield: phiên này không nằm trong workspace hợp lệ (storage/users/<tên> hoặc storage/admin); mọi công cụ bị chặn.'
     }
     const allowed = scope.role === 'admin' ? ADMIN_TOOLS : USER_TOOLS
-    if (!allowed.has(exec.name)) {
-      return `DocShield: công cụ "${exec.name}" không được phép trong workspace DocShield.`
-    }
-    return undefined
+    if (allowed.has(exec.name)) return undefined
+    if (allowOtherTools && !ADMIN_TOOLS.has(exec.name)) return undefined
+    return `DocShield: công cụ "${exec.name}" không được phép trong workspace DocShield.`
   }
 }

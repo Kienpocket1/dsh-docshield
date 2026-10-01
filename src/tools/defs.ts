@@ -2,7 +2,8 @@
  * Tool catalogue. M1 ships the final names, descriptions and parameter
  * schemas with placeholder bodies; later milestones replace `execute`.
  */
-import type { ContentBlock, RawToolDefinition, ToolExecutionView } from '../dsh-types.js'
+import type { ContentBlock, RawToolDefinition } from '../dsh-types.js'
+import type { DocInvoke } from './calls.js'
 import { requireScope, type ScopeSource } from './scope-check.js'
 
 type Needs = 'user' | 'admin' | 'any'
@@ -90,12 +91,14 @@ export const TOOL_SPECS: readonly ToolSpec[] = [
   },
 ]
 
-export type ToolBody = (args: Record<string, unknown>, exec: ToolExecutionView) => Promise<unknown>
-
 export type ToolRender = (value: unknown) => string
 
-/** Wrap a spec with scope enforcement and a JSON-object result; `render` shapes the model-facing text. */
-export function defineDocTool(spec: ToolSpec, source: ScopeSource, body: ToolBody, render?: ToolRender): RawToolDefinition {
+/**
+ * Wrap a spec with scope enforcement and a JSON-object result; `render` shapes
+ * the model-facing text. `invoke` runs the call in this process or, in docker
+ * mode, in the host DocShield service (which re-checks the role from its token).
+ */
+export function defineDocTool(spec: ToolSpec, source: ScopeSource, invoke: DocInvoke, render?: ToolRender): RawToolDefinition {
   return {
     name: spec.name,
     description: spec.description,
@@ -106,11 +109,11 @@ export function defineDocTool(spec: ToolSpec, source: ScopeSource, body: ToolBod
       presentationMeta: (_args, value) => value,
     },
     async execute(args, exec) {
-      requireScope(exec, source, spec.needs)
+      const scope = requireScope(exec, source, spec.needs)
       if (typeof args !== 'object' || args === null || Array.isArray(args)) {
         throw new Error('DocShield: tham số công cụ phải là object.')
       }
-      return body(args as Record<string, unknown>, exec)
+      return invoke(spec.name, args as Record<string, unknown>, { scope, sessionId: exec.agent?.session.id ?? 'unknown' })
     },
   }
 }

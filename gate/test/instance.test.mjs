@@ -52,3 +52,23 @@ describe('per-user home', () => {
     assert.match(readFileSync(path.join(adminHome, 'settings.yaml'), 'utf8'), /default: docshield-admin/)
   })
 })
+
+describe('docker template', () => {
+  it('holds no secrets and routes models through the gate proxy', () => {
+    const creds = 'version: 1\nrecords:\n  client-connection/browser-session:\n    kind: grant\n    payload:\n      secret: SHARED\nrefs:\n  ROUTER_KEY: real-key\n'
+    const settings = 'llm-pi-ai:\n  providers:\n    router:\n      apiKeyEnv: ROUTER_KEY\n      api: openai-completions\n      baseURL: http://127.0.0.1:20128/v1\n      models:\n        - id: m\nagent-default-model:\n  provider: router\n'
+    const tplDocker = path.join(dir, 'tpl-docker')
+    mkdirSync(tplDocker)
+    writeFileSync(path.join(tplDocker, 'settings.yaml'), settings)
+    writeFileSync(path.join(tplDocker, '.credentials.yaml'), creds)
+    const docker = new InstanceManager({ templateHome: tplDocker, idleMs: 0, runtime: 'docker', docker: { templateDir: path.join(dir, 'docker-template'), llmUrl: 'http://host.docker.internal:3494' } })
+    assert.deepEqual(docker.llmProviders(), [{ name: 'router', apiKeyEnv: 'ROUTER_KEY', baseURL: 'http://127.0.0.1:20128/v1', key: 'real-key' }])
+    const out = docker.writeDockerTemplate()
+    assert.doesNotMatch(readFileSync(path.join(out, '.credentials.yaml'), 'utf8'), /SHARED|browser-session|real-key/)
+    const outSettings = readFileSync(path.join(out, 'settings.yaml'), 'utf8')
+    assert.match(outSettings, /baseURL: http:\/\/host\.docker\.internal:3494\/llm\/router\n/)
+    assert.doesNotMatch(outSettings, /20128/)
+    assert.match(outSettings, /agent-default-model:\n {2}provider: router/)
+  })
+})
+

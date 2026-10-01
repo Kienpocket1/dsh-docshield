@@ -25,6 +25,14 @@ describe('config.identity', () => {
     expect(() => resolveCoreConfig({ storageRoot: ROOT, identity: { user: '../x' } }, {})).toThrow()
     expect(() => resolveCoreConfig({ storageRoot: ROOT, embedUrl: 'http://evil.com/embed' }, {})).toThrow()
     expect(resolveCoreConfig({ storageRoot: ROOT, embedUrl: 'http://127.0.0.1:3490/embed' }, {}).embedUrl).toBe('http://127.0.0.1:3490/embed')
+    expect(resolveCoreConfig({ storageRoot: ROOT, embedUrl: 'http://host.docker.internal:3490/embed' }, {}).embedUrl).toBe('http://host.docker.internal:3490/embed')
+    expect(() => resolveCoreConfig({ storageRoot: ROOT, embedUrl: 'http://host.docker.internal.evil.com/embed' }, {})).toThrow()
+    const remote = { storageRoot: ROOT, serviceUrl: 'http://host.docker.internal:3492', identity: { user: 'alice' } }
+    expect(resolveCoreConfig({ ...remote, allowOtherTools: true }, {}).allowOtherTools).toBe(true)
+    expect(() => resolveCoreConfig({ storageRoot: ROOT, identity: { user: 'alice' }, allowOtherTools: true }, {})).toThrow(/serviceUrl/)
+    expect(resolveCoreConfig(remote, {}).serviceUrl).toBe('http://host.docker.internal:3492')
+    expect(() => resolveCoreConfig({ ...remote, serviceUrl: 'http://host.docker.internal:3492.evil.com' }, {})).toThrow()
+    expect(() => resolveCoreConfig({ storageRoot: ROOT, serviceUrl: 'http://127.0.0.1:3492' }, {})).toThrow(/identity/)
   })
 })
 

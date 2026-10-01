@@ -33,6 +33,53 @@ Mở http://127.0.0.1:3444. Mỗi DSH riêng khởi động khi người dùng �
 
 Chế độ tunnel bật `GATE_TRUST_PROXY=1`. Khi đó gate lấy IP thật của người dùng từ header `CF-Connecting-IP`, để chống dò mật khẩu và giới hạn đăng ký theo từng người chứ không gộp chung một IP. Header này chỉ được tin khi request đến từ chính máy này. Cookie cũng được gắn cờ `Secure`. Link quick tunnel đổi mỗi lần chạy; tắt cửa sổ tunnel là ngắt truy cập từ ngoài.
 
+## Chạy mỗi người dùng trong một container (thử nghiệm, sandbox S0–S4)
+
+Đặt `GATE_RUNTIME=docker` thì DSH của mỗi người chạy trong một container Docker riêng (`gate-dsh-<tên>`), không chạy như tiến trình con trên Windows. Cách nhanh nhất:
+
+```
+E:\Deepseek_Harness\start-gate.cmd docker            # có thể ghép thêm: tunnel | lan
+E:\Deepseek_Harness\start-gate.cmd docker rebuild    # build lại image sau khi sửa code
+```
+
+Trước khi bật gate, `bin/ensure-docker.ps1` tự làm các việc sau:
+- nếu Docker Desktop đang tắt thì mở nó, sau khi dọn các file `.sock` cũ mà lần tắt máy không sạch để lại (chúng làm Docker Desktop crash khi khởi động);
+- chờ engine sẵn sàng;
+- build image nếu chưa có.
+
+Lệnh tương đương khi chạy tay:
+
+```
+cd E:\Deepseek_Harness\dsh-docshield
+npm run build
+docker build -f container/Dockerfile -t docshield-dsh:dev .
+set GATE_RUNTIME=docker
+node gate\bin\gate.mjs serve
+```
+
+```
+Trình duyệt ─► gate :3444 ─► container gate-dsh-alice (DSH + plugin DocShield mỏng)
+                               │  thấy: home (volume dsh-home-alice) + storage/users/alice
+                               └─ HTTP + token ─► dịch vụ DocShield :3492 (Windows)
+                                                   DB, watcher, nạp tài liệu, tìm kiếm
+                                                   └─► embedding bge-m3 :3490
+```
+
+- **Image** (`container/Dockerfile`): Node 24, DSH 0.1.6-alpha.2 và DocShield (không kèm model). Container chạy bằng user `node`, không phải root.
+- **Container chỉ thấy** home của mình (volume `dsh-home-<tên>`) và **đúng thư mục của mình** (`storage/users/<tên>`, admin: `storage/admin`). Container không thấy DB, không thấy thư mục của người khác, không thấy phần còn lại của ổ đĩa.
+- **Dịch vụ DocShield** (`scripts/docshield-server.mjs`, cổng `GATE_DOCSHIELD_PORT`, mặc định 3492) do gate chạy. Đây là tiến trình **duy nhất** mở DB. Nó theo dõi toàn bộ kho và nhận lời gọi công cụ cùng file đính kèm từ các container.
+- **Token:** mỗi lần khởi động container, gate sinh một token ngẫu nhiên và đăng ký token đó với dịch vụ, kèm danh tính của tài khoản. Khi container dừng, gate thu hồi token.
+  - Dịch vụ xác định người gọi **chỉ từ token**. Container tự khai là admin cũng không được.
+  - Đăng ký token cần khóa quản trị. Khóa này sinh mới mỗi lần gate chạy và chỉ gate cùng dịch vụ biết.
+  - Dịch vụ khởi động lại thì gate đăng ký lại token của các container đang chạy.
+- **Giới hạn tài nguyên:** 1 GB RAM, 2 CPU, tối đa 512 tiến trình (đổi bằng `GATE_DOCKER_MEMORY`, `GATE_DOCKER_CPUS`). Mỗi container dùng khoảng 130 MB khi rảnh.
+- **Cổng:** chỉ mở trên `127.0.0.1` của máy này. Cookie của DSH vẫn chặn mọi truy cập không đi qua gate.
+- **API key của model không vào container** (S2): gate chạy một **proxy model** (`GATE_LLM_PORT`, mặc định 3494, chỉ nghe trên 127.0.0.1) và chỉ proxy giữ key thật. Trong settings của container, `baseURL` của mỗi provider trỏ về `http://host.docker.internal:<cổng>/llm/<provider>`, còn biến key (`apiKeyEnv`, ví dụ `NIEN_ROUTER_API_KEY`) chứa **token của container**. Proxy chỉ nhận token của container đang chạy, thay bằng key thật rồi chuyển tiếp nguyên luồng stream. Container dừng thì token mất hiệu lực. `/template` và home không chứa key hay khóa ký nào; mỗi container tự sinh khóa ký cookie riêng. Provider không có `baseURL` + key thì không được proxy.
+- **Chặn mạng** (S3, `container/firewall.mjs` + `start.sh`): container khởi động bằng root **chỉ để** cài `iptables`, rồi `exec` sang user `node`. Sau bước này trong container không còn tiến trình root nào, mọi capability bị bỏ (bounding set rỗng) và `no_new_privs` bật, nên agent không gỡ được tường lửa. Kết nối ra ngoài chỉ được tới `host.docker.internal` ở **đúng 2 cổng**: dịch vụ DocShield và proxy model. Bị chặn: gate, 9Router, embedding, các cổng khác của máy, container của người khác, LAN, internet và DNS. IPv6 tắt. Cài tường lửa lỗi thì container không khởi động. `GATE_DOCKER_INTERNET=1` cho phép thêm DNS và internet công cộng, nhưng vẫn chặn máy chủ và LAN.
+- **Agent có lại đủ công cụ** (S4): container dùng preset **DocShield + công cụ** (`docshield-harness`, admin: `docshield-admin-harness`). Preset này gồm toàn bộ công cụ của preset Standard của DSH (shell, đọc/ghi/sửa file, tìm file, job, skill, lập kế hoạch, subagent…) cộng các công cụ DocShield, và được `container/make-harness-presets.mjs` sinh lúc build image từ đúng bản DSH trong image. Riêng plugin-manager bị bỏ. Câu hỏi về nội dung tài liệu vẫn bắt buộc tra bằng DocShield và có trích dẫn. Guard của DocShield chỉ cho các công cụ này chạy khi có `allowOtherTools`; tùy chọn này chỉ hợp lệ cùng `serviceUrl`, tức chỉ trong container. Chế độ chạy thẳng trên Windows vẫn khóa công cụ. Bên trong container, bash và file vẫn đi qua sandbox `workspace-write` của DSH (Landlock, kiểm tra được `full`) và vẫn hỏi duyệt như DSH bình thường. File agent tạo trong `docs/` được dịch vụ DocShield tự nạp.
+- **Tắt đột ngột:** container còn sót từ lần gate bị tắt ngang sẽ được xóa khi gate khởi động lại.
+
+
 ## Thiết lập lần đầu
 
 Khi chưa có tài khoản nào, cửa sổ gate in ra một **mã thiết lập** dùng một lần, và mọi trang đều chuyển về `/gate/setup`. Nhập mã đó cùng tên và mật khẩu để tạo **admin** đầu tiên; gate đăng nhập luôn cho bạn. Có tài khoản rồi thì trang này tự khóa. Nhập sai mã nhiều lần cũng bị khóa tạm, giống như đăng nhập sai.

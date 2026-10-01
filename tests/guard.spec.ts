@@ -35,6 +35,13 @@ describe('createGuard', () => {
     expect(call('scoped_doc_search', 'E:\\storage')).toMatch(/không nằm trong workspace hợp lệ/)
   })
 
+  it('in a container (allowOtherTools) lets harness tools run but keeps DocShield admin tools admin-only', () => {
+    const open = createGuard('/storage', { identity: { role: 'user', userId: 'alice' } }, true)
+    const as = (name: string) => open({ name, agent: { session: { id: 's', header: { cwd: '/storage/users/alice' } } } })
+    for (const tool of ['bash', 'read', 'write', 'edit', 'glob', 'grep', 'subagent', ...USER_TOOLS]) expect(as(tool), tool).toBeUndefined()
+    for (const tool of ['list_tickets', 'update_ticket', 'publish_public_doc', 'reindex_document']) expect(as(tool), tool).toMatch(/không được phép/)
+  })
+
   it('does not interfere outside the storage root or without an agent', () => {
     expect(call('bash', 'E:\\projects\\app')).toBeUndefined()
     expect(call('bash')).toBeUndefined()

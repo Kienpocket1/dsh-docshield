@@ -18,6 +18,7 @@ import { DEFAULT_MIN_SIMILARITY, DEFAULT_TOP_K } from './config.js'
 import { EvidenceLedger, verifyCitations, type Citation, type VerifiedEvidence } from './retrieval/evidence.js'
 import { hybridSearch, type SearchResult } from './retrieval/search.js'
 import { readableScopes, type DocScope, type ScopeOptions } from './scope.js'
+import { docCalls, invokeWith, type DocInvoke } from './tools/calls.js'
 
 export interface DocumentSummary {
   readonly filename: string
@@ -59,6 +60,8 @@ export class DocShieldService {
   readonly topK: number
   /** Scope resolution for guard, tools and uploads: fixed identity or the session cwd. */
   readonly scopeOptions: ScopeOptions
+  /** Tool calls run against this service (see tools/calls.ts). */
+  readonly invoke: DocInvoke
 
   constructor(readonly storageRoot: string, options: ServiceOptions = {}) {
     this.embedder = options.embedder
@@ -76,6 +79,7 @@ export class DocShieldService {
     this.resolve = bindingResolver(storageRoot, this.publicFiles)
     this.indexer = new Indexer(this.store, this.embedder, this.log)
     this.watcher = new StorageWatcher(storageRoot, this.resolve, this.indexer, this.store, () => this.publicFiles.retiredFilenames(), this.log, options.identity)
+    this.invoke = invokeWith(docCalls(this))
   }
 
   /** Search the partitions `scope` may read and remember the hits for citation checks. */
