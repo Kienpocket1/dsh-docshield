@@ -1,0 +1,8 @@
+{
+  "name": "dsh-docshield-repo",
+  "private": true,
+  "description": "Chạy test của cả docshield/ và gate/: npm test",
+  "scripts": {
+    "test": "npm --prefix docshield test && npm --prefix gate test"
+  }
+}

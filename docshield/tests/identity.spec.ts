@@ -13,7 +13,8 @@ import { resolveScope } from '../src/scope.js'
 import { DocShieldService } from '../src/service.js'
 import { requireScope } from '../src/tools/scope-check.js'
 
-const ROOT = 'E:\\store'
+const ROOT = path.resolve('/store')
+const ELSEWHERE = path.resolve('/elsewhere')
 const execIn = (cwd: string | undefined, name = 'scoped_doc_search') =>
   ({ name, agent: { session: { id: 's', header: { cwd } } } }) as never
 
@@ -39,19 +40,19 @@ describe('config.identity', () => {
 describe('fixed identity overrides the cwd', () => {
   const identity = { role: 'user', userId: 'bob' } as const
   it('every cwd, even another user folder or outside storage, resolves to the instance user', () => {
-    for (const cwd of [undefined, 'C:\\elsewhere', `${ROOT}\\users\\alice`, `${ROOT}\\admin`]) {
+    for (const cwd of [undefined, ELSEWHERE, path.join(ROOT, 'users', 'alice'), path.join(ROOT, 'admin')]) {
       expect(resolveScope(cwd, ROOT, { identity })).toEqual({ inside: true, scope: identity })
     }
   })
   it('guard applies the allowlist to every session of the instance', () => {
     const guard = createGuard(ROOT, { identity })
-    expect(guard(execIn('C:\\elsewhere', 'bash'))).toMatch(/không được phép/)
-    expect(guard(execIn('C:\\elsewhere', 'scoped_doc_search'))).toBeUndefined()
+    expect(guard(execIn(ELSEWHERE, 'bash'))).toMatch(/không được phép/)
+    expect(guard(execIn(ELSEWHERE, 'scoped_doc_search'))).toBeUndefined()
     expect(guard(execIn(undefined, 'publish_public_doc'))).toMatch(/không được phép/)
   })
   it('tools cannot reach admin through the cwd', () => {
-    expect(() => requireScope(execIn(`${ROOT}\\admin`), { storageRoot: ROOT, scopeOptions: { identity } }, 'admin')).toThrow(/Admin/)
-    expect(requireScope(execIn(`${ROOT}\\admin`), { storageRoot: ROOT, scopeOptions: { identity } }, 'any')).toEqual(identity)
+    expect(() => requireScope(execIn(path.join(ROOT, 'admin')), { storageRoot: ROOT, scopeOptions: { identity } }, 'admin')).toThrow(/Admin/)
+    expect(requireScope(execIn(path.join(ROOT, 'admin')), { storageRoot: ROOT, scopeOptions: { identity } }, 'any')).toEqual(identity)
   })
 })
 
